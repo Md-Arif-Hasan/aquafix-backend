@@ -87,96 +87,33 @@ def store_restore_file_paths(file_path, restored_image_path, table_name):
     values = (file_path, restored_image_path)
     execute_query(query, values)
 
-
-
-
-def compute_quality_metrics(image_path, output_path):
-    try:
-        print(image_path)
-        print(output_path)
-
-        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        output_img = cv2.imread(output_path, cv2.IMREAD_GRAYSCALE)
-
-        
-
-        # Check if images are successfully loaded
-        if img is None:
-            raise ValueError(f"Failed to read the image at path: {image_path}")
-        if output_img is None:
-            raise ValueError(f"Failed to read the image at path: {output_path}")
-
-        # Resize images to a common size
-        common_size = (min(img.shape[1], output_img.shape[1]), min(img.shape[0], output_img.shape[0]))
-        img = cv2.resize(img, common_size)
-        output_img = cv2.resize(output_img, common_size)
-
-        # Contrast metric
-        contrast = np.mean(cv2.absdiff(img, cv2.blur(img, (5, 5))))
-
-        # Sharpness metric
-        sharpness = cv2.Laplacian(img, cv2.CV_64F).var()
-
-        # SNR metric
-        snr = cv2.mean(img)[0]
-
-        return contrast, sharpness, snr
-
-    except Exception as e:
-        print(f"Error in compute_quality_metrics: {e}")
-        return None, None, None
     
 
-# @app.route('/enhance', methods=['POST'])
-# def upload_file():
-#     if 'file' not in request.files:
-#         return jsonify({'error': 'No file part'})
+def calculate_psnr(original_img_path, processed_img_path):
+    # Load images
+    original_img = cv2.imread(original_img_path, cv2.IMREAD_GRAYSCALE)
+    processed_img = cv2.imread(processed_img_path, cv2.IMREAD_GRAYSCALE)
 
-#     file = request.files['file']
+    # Check if images are loaded properly
+    if original_img is None or processed_img is None:
+        raise ValueError("Error loading images")
 
-#     if file.filename == '':
-#         return jsonify({'error': 'No selected file'})
+    # Ensure images have the same shape and data type
+    original_img = original_img.astype(np.float32)
+    processed_img = processed_img.astype(np.float32)
 
-#     file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-#     file.save(file_path)
+    # Calculate mean squared error (MSE)
+    mse = np.mean((original_img - processed_img) ** 2)
 
-#     # Processing the image and getting the processed image
-#     processed_image_path = enhance_Image(file_path)
+    # Calculate PSNR
+    max_pixel_value = 255  # For an 8-bit image
+    psnr = 10 * np.log10((max_pixel_value ** 2) / mse)
 
-#     if processed_image_path is None:
-#         return jsonify({'error': 'Error processing the image'})
+    # Convert values to standard Python types
+    psnr = float(psnr)
+    mse = float(mse)
 
-#     store_enhance_file_paths(file_path, processed_image_path, 'enhance')
-
-  
-#     input_image_path = file_path
-#     output_image_path = processed_image_path
-
-  
-
-#     input_metrics = compute_quality_metrics(input_image_path, 'upload\\'+ output_image_path)
-    
-#     if None in input_metrics:
-#         return jsonify({'error': 'Error computing input metrics'})
-
-#     output_metrics = compute_quality_metrics( 'upload\\'+output_image_path, input_image_path)
-
-#     if None in output_metrics:
-#         return jsonify({'error': 'Error computing output metrics'})
-
-#     # Compare and print improvement
-#     contrast_improvement = ((output_metrics[0] - input_metrics[0]) / input_metrics[0]) * 100
-#     sharpness_improvement = ((output_metrics[1] - input_metrics[1]) / input_metrics[1]) * 100
-#     snr_improvement = ((output_metrics[2] - input_metrics[2]) / input_metrics[2]) * 100
-
-#     print("\nImprovement:")
-#     print("Contrast Improvement:", contrast_improvement, "%")
-#     print("Sharpness Improvement:", sharpness_improvement, "%")
-#     print("SNR Improvement:", snr_improvement, "%")
-
-#     # Return the processed image file
-#     return send_from_directory(app.config['UPLOAD_FOLDER'], os.path.basename(processed_image_path), as_attachment=True)
-
+    return psnr, mse
 
 
 from flask import jsonify
@@ -204,35 +141,27 @@ def upload_file():
 
     store_enhance_file_paths(file_path, processed_image_path, 'enhance')
 
+
+
+    #matrics-----------------------------------------------------------------------------------------
     input_image_path = file_path
     output_image_path = processed_image_path
 
-    input_metrics = compute_quality_metrics(input_image_path, 'upload\\'+ output_image_path)
-    
-    if None in input_metrics:
+    metrics = calculate_psnr(input_image_path, 'upload\\'+ output_image_path)
+
+    if None in metrics:
         return jsonify({'error': 'Error computing input metrics'})
+    # Extracting MSE and PSNR from the metrics
+    mse, psnr = metrics
 
-    output_metrics = compute_quality_metrics('upload\\' + output_image_path, input_image_path)
-
-    if None in output_metrics:
-        return jsonify({'error': 'Error computing output metrics'})
-
-    # Compare and print improvement
-    contrast_improvement = ((output_metrics[0] - input_metrics[0]) / input_metrics[0]) * 100
-    sharpness_improvement = ((output_metrics[1] - input_metrics[1]) / input_metrics[1]) * 100
-    snr_improvement = ((output_metrics[2] - input_metrics[2]) / input_metrics[2]) * 100
-
-    print("\nImprovement:")
-    print("Contrast Improvement:", contrast_improvement, "%")
-    print("Sharpness Improvement:", sharpness_improvement, "%")
-    print("SNR Improvement:", snr_improvement, "%")
+    print("MSE :", mse)
+    print("PSNR :", psnr)
 
     # Prepare the response JSON
     response = {
         'processed_image_path': processed_image_path,
-        'contrast_improvement': contrast_improvement,
-        'sharpness_improvement': sharpness_improvement,
-        'snr_improvement': snr_improvement
+        'MSE': mse,
+        'PSNR': psnr
     }
 
     # Return the response as JSON
@@ -240,29 +169,6 @@ def upload_file():
 
 
 
-
-
-@app.route('/restore', methods=['POST'])
-# def restore_image():
-#     if 'file' not in request.files:
-#         return jsonify({'error': 'No file part'})
-
-#     file = request.files['file']
-
-#     if file.filename == '':
-#         return jsonify({'error': 'No selected file'})
-
-#     file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-#     file.save(file_path)
-
-#     # Restoration algorithm
-#     restored_image_path = restore_Image(file_path)
-
-#     # Store file paths in the 'restore' table
-#     store_restore_file_paths(file_path, restored_image_path, 'restore')
-
-#     # Return the restored image file
-#     return send_from_directory(app.config['UPLOAD_FOLDER'], restored_image_path, as_attachment=True)
 
 
 @app.route('/restore', methods=['POST'])
@@ -287,40 +193,29 @@ def restore_image():
     # Store file paths in the 'restore' table
     store_restore_file_paths(file_path, restored_image_path, 'restore')
 
+    #matrics-----------------------------------------------------------------------------------------
     input_image_path = file_path
-    output_image_path = restored_image_path  # Adjust the variable name
+    output_image_path = restored_image_path
 
-    input_metrics = compute_quality_metrics(input_image_path, os.path.join(app.config['UPLOAD_FOLDER'], output_image_path))
-    
-    if None in input_metrics:
+    metrics = calculate_psnr(input_image_path, 'upload\\'+ output_image_path)
+
+    if None in metrics:
         return jsonify({'error': 'Error computing input metrics'})
+    # Extracting MSE and PSNR from the metrics
+    mse, psnr = metrics
 
-    output_metrics = compute_quality_metrics(os.path.join(app.config['UPLOAD_FOLDER'], output_image_path), input_image_path)
-
-    if None in output_metrics:
-        return jsonify({'error': 'Error computing output metrics'})
-
-    # Compare and print improvement
-    contrast_improvement = ((output_metrics[0] - input_metrics[0]) / input_metrics[0]) * 100
-    sharpness_improvement = ((output_metrics[1] - input_metrics[1]) / input_metrics[1]) * 100
-    snr_improvement = ((output_metrics[2] - input_metrics[2]) / input_metrics[2]) * 100
-
-    print("\nImprovement:")
-    print("Contrast Improvement:", contrast_improvement, "%")
-    print("Sharpness Improvement:", sharpness_improvement, "%")
-    print("SNR Improvement:", snr_improvement, "%")
+    print("MSE :", mse)
+    print("PSNR :", psnr)
 
     # Prepare the response JSON
     response = {
-        'restored_image_path': output_image_path,  # Adjust the key name
-        'contrast_improvement': contrast_improvement,
-        'sharpness_improvement': sharpness_improvement,
-        'snr_improvement': snr_improvement
+        'restored_image_path': restored_image_path,
+        'MSE': mse,
+        'PSNR': psnr
     }
 
     # Return the response as JSON
     return jsonify(response)
-
 
 
 
